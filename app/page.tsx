@@ -408,6 +408,131 @@ export default function Page() {
   const displayTotal = showSampleData ? SAMPLE_EMAILS.length : totalCount
   const displayMessage = showSampleData ? 'Showing 5 sample email summaries for demonstration purposes.' : agentMessage
 
+  // Recursively search for an emails array anywhere in a nested object/string
+  const findEmailsDeep = useCallback((obj: any, depth: number = 0): EmailSummary[] | null => {
+    if (depth > 8 || !obj) return null
+
+    // If obj is a string, try to parse JSON out of it
+    if (typeof obj === 'string') {
+      const trimmed = obj.trim()
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          return findEmailsDeep(JSON.parse(trimmed), depth + 1)
+        } catch { /* ignore */ }
+      }
+      // Try to find JSON within markdown code blocks
+      const jsonMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
+      if (jsonMatch) {
+        try {
+          return findEmailsDeep(JSON.parse(jsonMatch[1]), depth + 1)
+        } catch { /* ignore */ }
+      }
+      return null
+    }
+
+    if (typeof obj !== 'object') return null
+
+    // If it's an array, check if it looks like emails
+    if (Array.isArray(obj)) {
+      if (obj.length > 0 && obj[0] && typeof obj[0] === 'object' &&
+          ('sender' in obj[0] || 'subject' in obj[0] || 'summary_bullets' in obj[0])) {
+        return obj
+      }
+      return null
+    }
+
+    // Direct emails field
+    if (Array.isArray(obj.emails) && obj.emails.length > 0) return obj.emails
+
+    // Search common nesting keys
+    const searchKeys = ['result', 'response', 'data', 'output', 'content', 'text', 'message', 'raw_response']
+    for (const key of searchKeys) {
+      if (obj[key] != null) {
+        const found = findEmailsDeep(obj[key], depth + 1)
+        if (found) return found
+      }
+    }
+
+    return null
+  }, [])
+
+  // Extract full agent data with all fallback strategies
+  const extractAgentData = useCallback((result: any): AgentData => {
+    const empty: AgentData = { emails: [], total_count: 0, message: '' }
+
+    // Strategy 1: Standard path — result.response.result.emails
+    let agentData: any = result?.response?.result
+    if (typeof agentData === 'string') {
+      try { agentData = JSON.parse(agentData) } catch { /* ignore */ }
+    }
+    if (agentData && typeof agentData === 'object' && Array.isArray(agentData.emails) && agentData.emails.length > 0) {
+      return { emails: agentData.emails, total_count: agentData.total_count ?? agentData.emails.length, message: agentData.message ?? '' }
+    }
+
+    // Strategy 2: Nested result — result.response.result.result.emails
+    if (agentData?.result && typeof agentData.result === 'object') {
+      const nested = typeof agentData.result === 'string' ? (() => { try { return JSON.parse(agentData.result) } catch { return null } })() : agentData.result
+      if (nested && Array.isArray(nested.emails) && nested.emails.length > 0) {
+        return { emails: nested.emails, total_count: nested.total_count ?? nested.emails.length, message: nested.message ?? '' }
+      }
+    }
+
+    // Strategy 3: Parse raw_response — bypasses normalizeResponse wrapping issues
+    // The raw_response contains the original agent output before normalization
+    const rawResponse = result?.raw_response
+    if (rawResponse && typeof rawResponse === 'string') {
+      try {
+        const rawParsed = JSON.parse(rawResponse)
+        const emails = findEmailsDeep(rawParsed)
+        if (emails && emails.length > 0) {
+          // Find the parent object to get total_count and message
+          const findParent = (o: any, d: number = 0): any => {
+            if (d > 6 || !o || typeof o !== 'object' || Array.isArray(o)) return null
+            if (Array.isArray(o.emails)) return o
+            for (const k of ['result', 'response', 'data', 'output', 'content']) {
+              if (o[k] && typeof o[k] === 'object') {
+                const found = findParent(o[k], d + 1)
+                if (found) return found
+              }
+              if (typeof o[k] === 'string') {
+                try {
+                  const p = JSON.parse(o[k])
+                  const found = findParent(p, d + 1)
+                  if (found) return found
+                } catch { /* ignore */ }
+              }
+            }
+            return null
+          }
+          const parent = findParent(rawParsed)
+          return {
+            emails,
+            total_count: parent?.total_count ?? emails.length,
+            message: parent?.message ?? ''
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Strategy 4: Deep search the entire result object
+    const foundEmails = findEmailsDeep(result)
+    if (foundEmails && foundEmails.length > 0) {
+      return { emails: foundEmails, total_count: foundEmails.length, message: '' }
+    }
+
+    // Strategy 5: Check if agentData.text has embedded JSON with emails
+    if (typeof agentData?.text === 'string') {
+      const textEmails = findEmailsDeep(agentData.text)
+      if (textEmails && textEmails.length > 0) {
+        return { emails: textEmails, total_count: textEmails.length, message: '' }
+      }
+    }
+
+    // No emails found — return whatever message we can extract
+    const msg = agentData?.text || agentData?.message || result?.response?.message || ''
+    return { ...empty, message: typeof msg === 'string' ? msg : '' }
+  }, [findEmailsDeep])
+
   const fetchEmails = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -426,22 +551,7 @@ export default function Page() {
       const result = await callAIAgent(message, AGENT_ID)
 
       if (result.success) {
-        let agentData: AgentData | string | undefined = result?.response?.result
-
-        // If result is a string, try to parse it
-        if (typeof agentData === 'string') {
-          try {
-            agentData = JSON.parse(agentData) as AgentData
-          } catch {
-            agentData = { emails: [], total_count: 0, message: agentData as string }
-          }
-        }
-
-        // Check if data is nested one level deeper
-        const parsed = agentData as AgentData | undefined
-        const finalData: AgentData = (parsed?.result && typeof parsed.result === 'object')
-          ? parsed.result
-          : (parsed ?? { emails: [], total_count: 0, message: '' })
+        const finalData = extractAgentData(result)
 
         const parsedEmails = Array.isArray(finalData?.emails) ? finalData.emails : []
         const parsedCount = typeof finalData?.total_count === 'number' ? finalData.total_count : parsedEmails.length
@@ -450,6 +560,11 @@ export default function Page() {
         setEmails(parsedEmails)
         setTotalCount(parsedCount)
         setAgentMessage(typeof parsedMessage === 'string' ? parsedMessage : '')
+
+        // If still no emails, provide a helpful message
+        if (parsedEmails.length === 0 && !parsedMessage) {
+          setAgentMessage('The agent responded but no email summaries were found. Try again or adjust your filters.')
+        }
       } else {
         setError(result?.error ?? result?.response?.message ?? 'Failed to fetch emails. Please try again.')
       }
@@ -458,7 +573,7 @@ export default function Page() {
     } finally {
       setLoading(false)
     }
-  }, [query, maxResults])
+  }, [query, maxResults, extractAgentData])
 
   const toggleCard = (index: number) => {
     setExpandedCard(prev => (prev === index ? null : index))
