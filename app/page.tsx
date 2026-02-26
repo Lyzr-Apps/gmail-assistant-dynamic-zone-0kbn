@@ -566,7 +566,25 @@ export default function Page() {
           setAgentMessage('The agent responded but no email summaries were found. Try again or adjust your filters.')
         }
       } else {
-        setError(result?.error ?? result?.response?.message ?? 'Failed to fetch emails. Please try again.')
+        // Extract the most useful error message
+        const rawError = result?.error ?? result?.response?.message ?? ''
+        const rawStr = typeof result?.raw_response === 'string' ? result.raw_response : ''
+        const fullError = rawError + ' ' + rawStr
+
+        // Check for tool authentication issues
+        if (fullError.includes('tool_auth') || fullError.includes('authentication') || fullError.includes('OAuth') || fullError.includes('credentials') || fullError.includes('not authenticated') || fullError.includes('401')) {
+          setError('Gmail authentication is required. Please connect your Gmail account through the platform settings to allow the agent to access your emails.')
+        } else if (fullError.includes('LYZR_API_KEY not configured')) {
+          setError('Server configuration error: API key is not set. Please contact the administrator.')
+        } else if (fullError.includes('timed out') || fullError.includes('timeout')) {
+          setError('The request timed out. The agent may be processing a large number of emails. Please try again with fewer emails.')
+        } else if (fullError.includes('Agent task failed') || fullError.includes('task failed')) {
+          setError('The email agent encountered an error while processing. This may be a temporary issue. Please try again.')
+        } else if (rawError) {
+          setError(rawError)
+        } else {
+          setError('Failed to fetch emails. Please try again.')
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
@@ -707,11 +725,18 @@ export default function Page() {
             <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4 flex items-start gap-3">
               <FiAlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-destructive">Failed to fetch emails</p>
+                <p className="text-sm font-medium text-destructive">
+                  {error.includes('Gmail authentication') ? 'Gmail Connection Required' : 'Failed to fetch emails'}
+                </p>
                 <p className="text-sm text-destructive/80 mt-1">{error}</p>
+                {error.includes('Gmail authentication') && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    The Gmail integration needs OAuth authorization. Once connected, click Summarize Inbox again.
+                  </p>
+                )}
                 <button
                   onClick={fetchEmails}
-                  className="mt-3 flex items-center gap-2 text-sm font-medium text-destructive hover:text-destructive/80 transition-colors underline underline-offset-2"
+                  className="mt-3 flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                 >
                   <FiRefreshCw className="w-3.5 h-3.5" />
                   Retry
