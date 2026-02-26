@@ -1,0 +1,9 @@
+{
+  "agents": {
+    "email_summary_agent": {
+      "agent_id": "69a01a108b888baee3576cd5",
+      "name": "Email Summary Agent",
+      "type": "single"
+    }
+  }
+}

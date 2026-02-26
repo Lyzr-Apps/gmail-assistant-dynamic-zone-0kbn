@@ -1,0 +1,32 @@
+{
+  "nodes": [
+    {
+      "id": "input_node",
+      "type": "Input",
+      "label": "User Query",
+      "nodeCategory": "input"
+    },
+    {
+      "id": "email_summary_agent",
+      "type": "Agent",
+      "label": "Email Summary Agent",
+      "nodeCategory": "agent"
+    },
+    {
+      "id": "output_node",
+      "type": "Output",
+      "label": "Email Summaries",
+      "nodeCategory": "end"
+    }
+  ],
+  "edges": [
+    {
+      "source": "input_node",
+      "target": "email_summary_agent"
+    },
+    {
+      "source": "email_summary_agent",
+      "target": "output_node"
+    }
+  ]
+}

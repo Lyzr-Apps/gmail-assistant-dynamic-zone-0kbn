@@ -1,0 +1,44 @@
+{
+  "agent_name": "Email Summary Agent",
+  "agent_id": "69a01a108b888baee3576cd5",
+  "description": "Fetches latest emails from Gmail, analyzes each email's content, generates concise bullet-point summaries highlighting key facts and required user actions",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": true,
+  "response_schema": {
+    "emails": [
+      {
+        "sender": "string",
+        "subject": "string",
+        "date": "string",
+        "summary_bullets": [
+          "string"
+        ],
+        "action_tag": "string",
+        "urgency": "string",
+        "full_summary": "string",
+        "snippet": "string"
+      }
+    ],
+    "total_count": "number",
+    "message": "string"
+  },
+  "example_response": {
+    "emails": [
+      {
+        "sender": "sample string",
+        "subject": "sample string",
+        "date": "sample string",
+        "summary_bullets": [
+          "sample string"
+        ],
+        "action_tag": "sample string",
+        "urgency": "sample string",
+        "full_summary": "sample string",
+        "snippet": "sample string"
+      }
+    ],
+    "total_count": 0,
+    "message": "sample string"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "agent_name": "Email Summary Agent",
+  "agent_type": "json",
+  "accessor": "json",
+  "has_module_outputs": false,
+  "schema": {
+    "emails": [
+      {
+        "sender": "string",
+        "subject": "string",
+        "date": "string",
+        "summary_bullets": ["string"],
+        "action_tag": "string",
+        "urgency": "string",
+        "full_summary": "string",
+        "snippet": "string"
+      }
+    ],
+    "total_count": "number",
+    "message": "string"
+  }
+}
